@@ -1,26 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-if (window.location.protocol === 'file:') {
-    alert("⚠️ ATENCIÓN: Firebase no funciona abriendo el archivo directamente. \n\nPor favor, usa el botón 'Go Live' de VS Code o sube los cambios a GitHub para que el botón de registro responda.");
-}
-
-const firebaseConfig = {
-    projectId: "reentry-zero-screens",
-    appId: "1:1016515885720:web:39f26f42accf2cb6146eed",
-    storageBucket: "reentry-zero-screens.firebasestorage.app",
-    apiKey: "AIzaSyDPQ0HHqRZTlJbPglH9EDYuX3o--7cFB20",
-    authDomain: "reentry-zero-screens.firebaseapp.com",
-    messagingSenderId: "1016515885720",
-    projectNumber: "1016515885720",
-    version: "2"
-};
-
-const f_app = initializeApp(firebaseConfig);
-const auth = getAuth(f_app);
-const db = getFirestore(f_app);
-
 const app = {
     state: {
         tokens: 0,
@@ -35,75 +12,28 @@ const app = {
             { id: 3, text: "Ayudar en la base (casa)", reward: 10, icon: "🏠", completed: false },
             { id: 4, text: "Dibujar un alienígena", reward: 4, icon: "🎨", completed: false }
         ],
+        parentalPin: "1234",
         editingMissionId: null,
         totalMissionsCompleted: 0
     },
-    user: null,
-    unsubscribe: null,
 
     init() {
-        this.initAuth();
-        this.initEnergyInfo();
-        this.attachEventListeners();
+        this.loadState();
+        this.renderMissions();
+        this.updateUI();
         console.log("REENTRY: Protocolo iniciado 🚀");
     },
 
-    attachEventListeners() {
-        const primaryBtn = document.getElementById('auth-primary-btn');
-        const toggleBtn = document.getElementById('auth-toggle');
-
-        if (primaryBtn) primaryBtn.onclick = () => {
-            if (this.authMode === 'login') this.login();
-            else this.signup();
-        };
-
-        if (toggleBtn) toggleBtn.onclick = () => this.toggleAuthMode();
-    },
-
-    initAuth() {
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                this.user = user;
-                document.getElementById('auth-section').style.display = 'none';
-                document.getElementById('app-content').style.display = 'block';
-                document.getElementById('logout-trigger').style.display = 'block';
-                this.loadState();
-            } else {
-                this.user = null;
-                if (this.unsubscribe) this.unsubscribe();
-                document.getElementById('auth-section').style.display = 'block';
-                document.getElementById('app-content').style.display = 'none';
-                document.getElementById('logout-trigger').style.display = 'none';
-            }
-        });
-    },
-
-    async loadState() {
-        if (!this.user) return;
-
-        // Listen for real-time updates
-        if (this.unsubscribe) this.unsubscribe();
-
-        this.unsubscribe = onSnapshot(doc(db, "users", this.user.uid), (docSnap) => {
-            if (docSnap.exists()) {
-                const savedState = docSnap.data();
-                // Merge missions to preserve new missions if structural changes occur
-                this.state = { ...this.state, ...savedState };
-                this.updateUI();
-            } else {
-                // First time user: save initial state
-                this.saveState();
-            }
-        });
-    },
-
-    async saveState() {
-        if (!this.user) return;
-        try {
-            await setDoc(doc(db, "users", this.user.uid), this.state);
-        } catch (e) {
-            console.error("Error al guardar en la nube:", e);
+    loadState() {
+        const saved = localStorage.getItem('disconnect_mission_state');
+        if (saved) {
+            const savedState = JSON.parse(saved);
+            this.state = { ...this.state, ...savedState };
         }
+    },
+
+    saveState() {
+        localStorage.setItem('disconnect_mission_state', JSON.stringify(this.state));
     },
 
     completeMission(id) {
@@ -164,19 +94,17 @@ const app = {
         }
     },
 
-    addToken() {
-        this.state.tokens += 1;
-        this.showNotification("+1 Token de Tierra 💎");
-        this.updateUI();
-        this.saveState();
-    },
-
     // Administrative Functions
     toggleAdmin() {
         const panel = document.getElementById('admin-panel');
         const isHidden = panel.style.display === 'none';
 
         if (isHidden) {
+            const pin = prompt("Introduce el PIN parental (por defecto 1234):");
+            if (pin !== this.state.parentalPin) {
+                alert("PIN incorrecto. Acceso denegado.");
+                return;
+            }
             panel.style.display = 'block';
             this.renderAdminMissions();
             panel.scrollIntoView({ behavior: 'smooth' });
@@ -265,7 +193,7 @@ const app = {
             this.state.tokens = 0;
             this.saveState();
             this.updateUI();
-            this.showNotification("Tokens reseteados 💎");
+            this.showNotification("Tokens reseteados 🪙");
         }
     },
 
@@ -331,14 +259,6 @@ const app = {
         document.getElementById('player-name').innerText = this.state.playerName;
         document.getElementById('level-badge').innerText = `✨ Niv. ${this.state.level}`;
 
-        // Level Progress Bar Logic
-        const missionsInCurrentLevel = this.state.totalMissionsCompleted % 10;
-        const progressPercent = missionsInCurrentLevel * 10;
-        const levelProgressBar = document.getElementById('level-progress-bar');
-        if (levelProgressBar) {
-            levelProgressBar.style.width = `${progressPercent}%`;
-        }
-
         if (this.state.playerAvatar) {
             document.getElementById('mascot-img').src = this.state.playerAvatar;
         }
@@ -346,130 +266,18 @@ const app = {
         this.renderMissions();
     },
 
-    initEnergyInfo() {
-        const trigger = document.getElementById('energy-info-trigger');
-        if (trigger) {
-            trigger.onclick = () => {
-                alert("⚡ ENERGÍA VITAL:\n\nEs tu combustible para explorar. \n\n• Sube +10% cada vez que completas una misión.\n• Baja -10% cuando canjeas un Ticket de Pantalla.\n\n¡Mantén tu energía alta para seguir siendo un gran explorador! 🚀");
-            };
-        }
-    },
-
-    async login() {
-        console.log("REENTRY: Ejecutando app.login()...");
-        const email = document.getElementById('auth-email').value;
-        const password = document.getElementById('auth-password').value;
-        const errorEl = document.getElementById('auth-error');
-
-        if (!email || !password) {
-            errorEl.innerText = "Introduce tus credenciales, explorador 🛰️";
-            errorEl.style.display = 'block';
-            return;
-        }
-
-        try {
-            errorEl.style.display = 'none';
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (e) {
-            console.error("Error Firebase Login:", e.code);
-            if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
-                errorEl.innerText = "Credenciales incorrectas. ¿Has registrado ya tu cuenta? 🚀";
-            } else if (e.code === 'auth/invalid-email') {
-                errorEl.innerText = "El formato del email no es válido 📧";
-            } else {
-                errorEl.innerText = "Error al entrar: " + e.message;
-            }
-            errorEl.style.display = 'block';
-        }
-    },
-
-    authMode: 'login',
-    toggleAuthMode() {
-        const btn = document.getElementById('auth-primary-btn');
-        const toggleText = document.getElementById('auth-toggle');
-        const title = document.querySelector('#auth-section h2');
-
-        if (this.authMode === 'login') {
-            this.authMode = 'signup';
-            btn.innerText = "Crear Cuenta ✨";
-            btn.onclick = () => this.signup();
-            toggleText.innerText = "Ya tengo cuenta, entrar";
-            title.innerText = "Nuevo Recluta";
-        } else {
-            this.authMode = 'login';
-            btn.innerText = "Entrar 🚀";
-            btn.onclick = () => this.login();
-            toggleText.innerText = "¿No tienes cuenta? Regístrate aquí";
-            title.innerText = "Protocolo de Acceso";
-        }
-    },
-
-    async signup() {
-        console.log("REENTRY: Intentando registro...");
-        const email = document.getElementById('auth-email').value;
-        const password = document.getElementById('auth-password').value;
-        const errorEl = document.getElementById('auth-error');
-
-        try {
-            errorEl.style.display = 'none';
-            await createUserWithEmailAndPassword(auth, email, password);
-            this.showNotification("¡Bienvenido a la Base! 🌏");
-        } catch (e) {
-            console.error("Error Firebase Signup:", e.code, e.message);
-            if (e.code === 'auth/email-already-in-use') {
-                errorEl.innerText = "Este astronauta ya está registrado 👨‍🚀. Prueba a entrar.";
-            } else if (e.code === 'auth/weak-password') {
-                errorEl.innerText = "La contraseña debe tener al menos 6 caracteres 🛡️";
-            } else if (e.code === 'auth/invalid-email') {
-                errorEl.innerText = "El formato del email no es válido 📧";
-            } else if (e.code === 'auth/operation-not-allowed') {
-                errorEl.innerText = "Error crítico: El administrador no ha activado el registro por email en la consola.";
-            } else {
-                errorEl.innerText = "Error al registrar: " + e.message;
-            }
-            errorEl.style.display = 'block';
-        }
-    },
-
-    async logout() {
-        if (confirm("¿Quieres cerrar la sesión y volver a la atmósfera?")) {
-            try {
-                await signOut(auth);
-            } catch (e) {
-                console.error("Error al cerrar sesión:", e);
-            }
-        }
-    },
-
     renderMissions() {
         const list = document.getElementById('missions-list');
-        if (!list) return; // Guard for auth screen
         list.innerHTML = '';
 
-        this.state.missions.forEach((mission, index) => {
+        this.state.missions.forEach(mission => {
             const card = document.createElement('div');
-            card.className = `card card-animation mission-item`;
-            card.setAttribute('draggable', true);
-            card.setAttribute('data-index', index);
+            card.className = `card card-animation`;
             card.style.display = 'flex';
             card.style.alignItems = 'center';
             card.style.justifyContent = 'space-between';
             card.style.padding = '15px';
             card.style.marginBottom = '10px';
-
-            // Drag events
-            card.ondragstart = (e) => {
-                e.target.classList.add('dragging');
-                e.dataTransfer.setData('text/plain', index);
-            };
-            card.ondragend = (e) => e.target.classList.remove('dragging');
-            card.ondragover = (e) => e.preventDefault();
-            card.ondrop = (e) => {
-                e.preventDefault();
-                const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
-                const toIndex = index;
-                this.reorderMissions(fromIndex, toIndex);
-            };
 
             card.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 15px;">
@@ -483,18 +291,7 @@ const app = {
             `;
             list.appendChild(card);
         });
-    },
-
-    reorderMissions(from, to) {
-        if (from === to) return;
-        const missions = [...this.state.missions];
-        const [movedItem] = missions.splice(from, 1);
-        missions.splice(to, 0, movedItem);
-        this.state.missions = missions;
-        this.updateUI();
-        this.saveState();
     }
 };
 
-window.app = app;
-app.init();
+window.onload = () => app.init();
