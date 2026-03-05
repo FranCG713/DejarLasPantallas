@@ -66,14 +66,12 @@ const app = {
                 this.user = user;
                 document.getElementById('auth-section').style.display = 'none';
                 document.getElementById('app-content').style.display = 'block';
-                document.getElementById('logout-trigger').style.display = 'block';
                 this.loadState();
             } else {
                 this.user = null;
                 if (this.unsubscribe) this.unsubscribe();
                 document.getElementById('auth-section').style.display = 'block';
                 document.getElementById('app-content').style.display = 'none';
-                document.getElementById('logout-trigger').style.display = 'none';
             }
         });
     },
